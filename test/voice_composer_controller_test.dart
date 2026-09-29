@@ -40,6 +40,31 @@ void main() {
     },
   );
 
+  testWidgets(
+    'heartbeat placeholder partials never reach the composer',
+    (tester) async {
+      final editor = TextEditingController();
+      final adapter = FakeVoiceComposerAdapter();
+      final controller = VoiceComposerController(
+        textController: editor,
+        adapter: adapter,
+      );
+      addTearDown(controller.dispose);
+      addTearDown(editor.dispose);
+
+      expect(await controller.start(), isTrue);
+      adapter.emitPartial('\u2026');
+      adapter.emitPartial('\u2026 ');
+      expect(editor.text, '');
+      expect(controller.listening, isTrue);
+      adapter.emitFinal('\u2026 Test eins zwei');
+      await tester.pump();
+
+      expect(editor.text, 'Test eins zwei');
+      expect(controller.listening, isFalse);
+    },
+  );
+
   testWidgets('uses a valid cursor and falls back to the end', (tester) async {
     final cursorEditor = TextEditingController.fromValue(
       const TextEditingValue(

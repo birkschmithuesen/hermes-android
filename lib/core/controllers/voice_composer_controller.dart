@@ -115,8 +115,16 @@ class VoiceComposerController extends ChangeNotifier {
 
   void _handleResult({required String transcript, required bool isFinal}) {
     if (_disposed || !_acceptResults) return;
-    final recognized = transcript.trim();
+    // Strip heartbeat placeholder dots ("…") some offline recognizers prepend
+    // or emit on their own (see below).
+    final recognized = transcript.trim().replaceFirst(_leadingEllipsis, '');
     if (recognized.isEmpty) return;
+    // Some offline recognizers emit heartbeat placeholder partials ("…") so
+    // speech_to_text's pauseFor timer stays alive during dictation. The plugin
+    // resets that timer before invoking this callback, so dropping them here
+    // keeps the heartbeat working without ever inserting the dots into the
+    // composer (also when speech_to_text promotes the last partial to final).
+    if (_isPlaceholderPartial(recognized)) return;
 
     final value = textController.value;
     var start = _replacementStart;
@@ -166,6 +174,12 @@ class VoiceComposerController extends ChangeNotifier {
       _notify();
     }
   }
+
+  static final RegExp _placeholderPattern = RegExp(r'^[\u2026.\s]+$');
+  static final RegExp _leadingEllipsis = RegExp(r'^[\u2026\s]+');
+
+  static bool _isPlaceholderPartial(String text) =>
+      _placeholderPattern.hasMatch(text);
 
   Future<void> _stopAdapterAfterFinal() async {
     try {

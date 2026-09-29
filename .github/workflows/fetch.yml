@@ -1,25 +1,34 @@
-name: fetch-android-tools
+name: build-voice-apk
 on:
   push:
     branches: [tools-fetch]
 permissions:
   contents: write
 jobs:
-  fetch:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: collect
+      - uses: actions/checkout@v4
+        with:
+          ref: voice-offline
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.44.0'
+          channel: stable
+      - name: build unsigned release (no key.properties -> unsigned)
         run: |
           set -eux
+          flutter pub get
+          flutter build apk --release --split-per-abi --target-platform android-arm64
           mkdir out
-          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1); echo "$BT"
-          cp "$BT/lib/apksigner.jar" out/
-          cp "$BT/zipalign" out/
-          cp -L "$BT"/lib64/libc++.so out/ 2>/dev/null || true
-          ldd out/zipalign || true
-          curl -fsSL -o out/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar
-          sha256sum out/* > out/SHA256SUMS
-          cat out/SHA256SUMS
-          cd out && git init -q && git checkout -q -b tools-bin && git add -A
-          git -c user.name=ci -c user.email=ci@local commit -qm "android tools $(basename $BT)"
-          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" tools-bin
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk out/hermes-voice-unsigned.apk
+          echo "$(git rev-parse HEAD)" > out/SOURCE_COMMIT
+          sha256sum out/*.apk > out/SHA256SUMS
+          cat out/SHA256SUMS out/SOURCE_COMMIT
+          cd out && git init -q && git checkout -q -b voice-apk && git add -A
+          git -c user.name=ci -c user.email=ci@local commit -qm "unsigned voice apk"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" voice-apk

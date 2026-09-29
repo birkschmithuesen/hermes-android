@@ -314,6 +314,10 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
   late final VoiceComposerController _voiceComposer;
   bool _voiceReplyEnabled = true;
   bool _awaitingVoiceReply = false;
+  // Hands-free conversation: a completed dictation is sent automatically and
+  // listening restarts once the spoken reply finished. Opt-in (settings).
+  bool _conversationMode = false;
+  bool _conversationActive = false;
   String? _voiceStatus;
   String? _sttLocaleId;
 
@@ -364,6 +368,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       textController: _textController,
       adapter:
           widget.testVoiceComposerAdapter ?? SpeechToTextVoiceComposerAdapter(),
+      onEnded: _onDictationEnded,
     )..addListener(_onVoiceComposerChanged);
     _attachmentDrafts
       ..addAll(widget.initialAttachmentDrafts)
@@ -436,7 +441,12 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _loadVerboseMode() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _verboseMode = prefs.getBool('verbose_mode') ?? false);
+    if (!mounted) return;
+    setState(() {
+      _verboseMode = prefs.getBool('verbose_mode') ?? false;
+      _conversationMode =
+          prefs.getBool(voiceConversationModePreferenceKey) ?? false;
+    });
   }
 
   @override
@@ -477,6 +487,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         state == AppLifecycleState.hidden ||
         state == AppLifecycleState.detached) {
       _appInBackground = true;
+      _conversationActive = false;
       _pauseReattachRetry();
       if (_legacyTransportFallback && (_sending || _streaming)) {
         _legacyHistoryResyncPending = true;
@@ -624,6 +635,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
         } else {
           _sttLocaleId = null;
         }
+        // speak() resolves when the utterance finished, so conversation mode
+        // never reopens the microphone while the reply is still playing.
+        await _flutterTts.awaitSpeakCompletion(true);
         await _flutterTts.setSpeechRate(0.48);
         await _flutterTts.setVolume(1.0);
         await _flutterTts.setPitch(1.0);
@@ -642,6 +656,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
 
   Future<void> _startVoiceInput() async {
     if (_streaming || _sending || _loading || _pendingReattachResync) return;
+    _conversationActive = _conversationMode;
     if (widget.testVoiceComposerAdapter == null) {
       await _flutterTts.stop();
     }
@@ -664,9 +679,38 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
     if (mounted) setState(() {});
   }
 
+  /// Conversation mode: a dictation that ended on its own (recognizer VAD)
+  /// is sent immediately. Stop, Cancel, silence or an error end the
+  /// conversation so the microphone never reopens unasked.
+  void _onDictationEnded(VoiceDictationEnd reason) {
+    if (!_conversationActive || !mounted) return;
+    if (reason != VoiceDictationEnd.completed ||
+        _textController.text.trim().isEmpty) {
+      _conversationActive = false;
+      return;
+    }
+    // Let the controller finish its own bookkeeping before sending.
+    scheduleMicrotask(() {
+      if (!mounted || !_conversationActive) return;
+      unawaited(_sendMessage(speakResponse: true));
+    });
+  }
+
   Future<void> _speakAssistantText(String text) async {
     if (!_voiceReplyEnabled) return;
     await _readAssistantText(text);
+    _continueConversation();
+  }
+
+  void _continueConversation() {
+    if (!mounted ||
+        !_conversationActive ||
+        !_voiceReplyEnabled ||
+        _appInBackground ||
+        _voiceComposer.listening) {
+      return;
+    }
+    unawaited(_startVoiceInput());
   }
 
   Future<void> _readAssistantText(String text, {bool announce = false}) async {
@@ -2961,6 +3005,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
       _sending = false;
       _gatewayTurnStatus = null;
       _awaitingVoiceReply = false;
+      _conversationActive = false;
       _activeResponseTransport = _ResponseTransport.none;
       _activeClientTurnId = null;
       if (_messages.isNotEmpty &&
@@ -3463,6 +3508,7 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                     onPressed: () {
                       setState(() => _voiceReplyEnabled = !_voiceReplyEnabled);
                       if (!_voiceReplyEnabled) {
+                        _conversationActive = false;
                         _flutterTts.stop();
                       }
                     },

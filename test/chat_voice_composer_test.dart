@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hermes_android/core/controllers/voice_composer_controller.dart';
 import 'package:hermes_android/core/screens/chat_screen.dart';
 import 'package:hermes_android/core/services/connection_manager.dart';
 import 'package:hermes_android/core/widgets/voice_composer_controls.dart';
@@ -202,6 +203,85 @@ void main() {
       expect(submitCount, 0);
       expect(voice.stopCount, 1);
       expect(voice.cancelCount, 1);
+    },
+  );
+
+  testWidgets(
+    'conversation mode sends a completed dictation without a tap',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'verbose_mode': false,
+        voiceConversationModePreferenceKey: true,
+      });
+      final voice = FakeVoiceComposerAdapter();
+      var submitCount = 0;
+      String? submittedText;
+      await _pumpChat(
+        tester,
+        voice: voice,
+        remoteSubmit:
+            ({
+              required sessionId,
+              required text,
+              required onEvent,
+              required onSent,
+            }) async {
+              onSent();
+              submitCount += 1;
+              submittedText = text;
+            },
+      );
+
+      await tester.tap(find.bySemanticsLabel('Start voice input'));
+      await tester.pump();
+      voice.emitPartial('\u2026');
+      voice.emitFinal('Wie wird das Wetter');
+      await tester.pumpAndSettle();
+
+      expect(submitCount, 1);
+      expect(submittedText, 'Wie wird das Wetter');
+    },
+  );
+
+  testWidgets(
+    'conversation mode never sends after Stop or Cancel',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'verbose_mode': false,
+        voiceConversationModePreferenceKey: true,
+      });
+      final voice = FakeVoiceComposerAdapter(
+        finalTranscriptOnStop: 'stopped words',
+      );
+      var submitCount = 0;
+      await _pumpChat(
+        tester,
+        voice: voice,
+        remoteSubmit:
+            ({
+              required sessionId,
+              required text,
+              required onEvent,
+              required onSent,
+            }) async {
+              onSent();
+              submitCount += 1;
+            },
+      );
+
+      await tester.tap(find.bySemanticsLabel('Start voice input'));
+      await tester.pump();
+      voice.emitPartial('some');
+      await tester.tap(find.byKey(VoiceComposerIndicator.stopKey));
+      await tester.pumpAndSettle();
+      expect(submitCount, 0);
+
+      await tester.tap(find.bySemanticsLabel('Start voice input'));
+      await tester.pump();
+      voice.emitPartial('other');
+      await tester.tap(find.byKey(VoiceComposerIndicator.cancelKey));
+      await tester.pumpAndSettle();
+      expect(submitCount, 0);
     },
   );
 

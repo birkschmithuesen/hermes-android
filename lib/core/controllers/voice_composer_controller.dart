@@ -4,6 +4,13 @@ import 'package:flutter/widgets.dart';
 
 import '../services/voice_composer_adapter.dart';
 
+/// SharedPreferences key for hands-free conversation mode (settings toggle).
+const voiceConversationModePreferenceKey = 'voice_conversation_mode';
+
+/// Why a dictation session ended. Lets a caller (e.g. a hands-free
+/// conversation mode) decide whether to submit the dictated text.
+enum VoiceDictationEnd { completed, stopped, cancelled, noResult, error }
+
 /// Owns a single dictation session and edits only its controlled replacement
 /// range. Recognition callbacks never have access to chat submission.
 class VoiceComposerController extends ChangeNotifier {
@@ -24,9 +31,14 @@ class VoiceComposerController extends ChangeNotifier {
   Duration _elapsed = Duration.zero;
   String? _status;
 
+  /// Called once per session after it ended and listeners were notified.
+  /// The controller itself never submits; see [VoiceDictationEnd].
+  ValueChanged<VoiceDictationEnd>? onEnded;
+
   VoiceComposerController({
     required this.textController,
     required this.adapter,
+    this.onEnded,
   });
 
   bool get available => _available;
@@ -91,6 +103,9 @@ class VoiceComposerController extends ChangeNotifier {
         _acceptResults = false;
         _finishListening(status: stopError?.toString());
         _clearSession();
+        _ended(
+          stopError == null ? VoiceDictationEnd.stopped : VoiceDictationEnd.error,
+        );
       }
     }
   }
@@ -103,6 +118,7 @@ class VoiceComposerController extends ChangeNotifier {
     _finishListening(status: null);
     if (snapshot != null) textController.value = snapshot;
     _clearSession();
+    _ended(VoiceDictationEnd.cancelled);
     try {
       await adapter.cancel();
     } catch (error) {
@@ -169,6 +185,7 @@ class VoiceComposerController extends ChangeNotifier {
       _finishListening(status: 'Dictation ready to edit');
       _clearSession();
       unawaited(_stopAdapterAfterFinal());
+      _ended(VoiceDictationEnd.completed);
     } else {
       _status = 'Listening';
       _notify();
@@ -214,15 +231,22 @@ class VoiceComposerController extends ChangeNotifier {
       _acceptResults = false;
       _finishListening(status: null);
       _clearSession();
+      _ended(VoiceDictationEnd.noResult);
     }
   }
 
   void _handleError(String message) {
     if (_disposed) return;
+    final wasActive = _listening || _acceptResults;
     _acceptResults = false;
     _stopping = false;
     _finishListening(status: message);
     _clearSession();
+    if (wasActive) _ended(VoiceDictationEnd.error);
+  }
+
+  void _ended(VoiceDictationEnd reason) {
+    if (!_disposed) onEnded?.call(reason);
   }
 
   TextSelection _validSelectionOrEnd(TextEditingValue value) {

@@ -65,6 +65,39 @@ void main() {
     },
   );
 
+  testWidgets('reports why a dictation session ended', (tester) async {
+    final editor = TextEditingController();
+    final adapter = FakeVoiceComposerAdapter();
+    final ends = <VoiceDictationEnd>[];
+    final controller = VoiceComposerController(
+      textController: editor,
+      adapter: adapter,
+      onEnded: ends.add,
+    );
+    addTearDown(controller.dispose);
+    addTearDown(editor.dispose);
+
+    await controller.start();
+    adapter.emitFinal('done speaking');
+    await tester.pump();
+    await controller.start();
+    await controller.stop();
+    await controller.start();
+    await controller.cancel();
+    await controller.start();
+    adapter.emitStatus('done');
+    await controller.start();
+    adapter.emitError('boom');
+
+    expect(ends, [
+      VoiceDictationEnd.completed,
+      VoiceDictationEnd.stopped,
+      VoiceDictationEnd.cancelled,
+      VoiceDictationEnd.noResult,
+      VoiceDictationEnd.error,
+    ]);
+  });
+
   testWidgets('uses a valid cursor and falls back to the end', (tester) async {
     final cursorEditor = TextEditingController.fromValue(
       const TextEditingValue(

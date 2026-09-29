@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../controllers/voice_composer_controller.dart';
 import '../services/config_backup_io.dart';
 import '../services/config_backup_service.dart';
 import '../services/connection_manager.dart';
@@ -345,6 +346,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // ---- Section: Voice ----
         _buildSectionHeader('Voice'),
         _VoicePicker(),
+        const SizedBox(height: 8),
+        _ConversationModeToggle(),
         const SizedBox(height: 16),
 
         // ---- Section: Session Sources ----
@@ -564,6 +567,54 @@ class _VerboseToggleState extends State<_VerboseToggle> {
         subtitle: const Text('Show tool calls, thinking, and message metadata'),
         secondary: const Icon(Icons.terminal),
         value: _verbose,
+        onChanged: _set,
+      ),
+    );
+  }
+}
+
+class _ConversationModeToggle extends StatefulWidget {
+  @override
+  State<_ConversationModeToggle> createState() =>
+      _ConversationModeToggleState();
+}
+
+class _ConversationModeToggleState extends State<_ConversationModeToggle> {
+  bool _enabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(
+      () => _enabled =
+          prefs.getBool(voiceConversationModePreferenceKey) ?? false,
+    );
+  }
+
+  Future<void> _set(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(voiceConversationModePreferenceKey, value);
+    if (!mounted) return;
+    setState(() => _enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: SwitchListTile(
+        title: const Text('Conversation mode'),
+        subtitle: const Text(
+          'Send dictation automatically when you stop speaking and listen '
+          'again after the spoken reply. Stop or Cancel ends the conversation.',
+        ),
+        secondary: const Icon(Icons.record_voice_over),
+        value: _enabled,
         onChanged: _set,
       ),
     );

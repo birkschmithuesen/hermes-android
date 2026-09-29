@@ -60,8 +60,12 @@ class SpeechToTextVoiceComposerAdapter implements VoiceComposerAdapter {
   }) async {
     await _speechToText.listen(
       listenOptions: SpeechListenOptions(
+        // No pauseFor: speech_to_text's pause timer only counts *changed*
+        // results, so with recognizers that deliver no partial results
+        // (offline/on-device engines) it ended every dictation 3 s after
+        // start. End-of-utterance is left to the recognizer's own VAD;
+        // listenFor stays as a hard cap.
         listenFor: const Duration(seconds: 60),
-        pauseFor: const Duration(seconds: 3),
         partialResults: true,
         cancelOnError: true,
         listenMode: ListenMode.dictation,

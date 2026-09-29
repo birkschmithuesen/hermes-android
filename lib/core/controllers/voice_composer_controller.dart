@@ -188,7 +188,14 @@ class VoiceComposerController extends ChangeNotifier {
       _notify();
       return;
     }
-    if (normalized == 'done' || normalized == 'notlistening') {
+    // Offline recognizers (e.g. Parakeet/Whisper based) signal end-of-speech
+    // before delivering the final transcript. speech_to_text reports that as
+    // 'notListening', followed by 'done'/'doneNoResult' once results arrived.
+    // Only end the session on 'done*' so late final results are not dropped.
+    if (normalized == 'notlistening') {
+      return;
+    }
+    if (normalized == 'done' || normalized == 'donenoresult') {
       if (_stopping || !_listening) return;
       _acceptResults = false;
       _finishListening(status: null);

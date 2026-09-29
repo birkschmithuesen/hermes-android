@@ -51,6 +51,10 @@
             <action android:name="android.speech.RecognitionService"/>
         </intent>
         <intent>
+            <!-- Android 11+ package visibility: needed to bind non-system TTS engines (e.g. SherpaTTS) -->
+            <action android:name="android.intent.action.TTS_SERVICE"/>
+        </intent>
+        <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>

@@ -3435,7 +3435,8 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                       textInputAction: TextInputAction.send,
                       enabled:
                           !_loading && !_streaming && !_pendingReattachResync,
-                      onSubmitted: (_) => _sendMessage(),
+                      onSubmitted: (_) =>
+                          _sendMessage(speakResponse: _voiceReplyEnabled),
                     ),
                   ),
                 ),
@@ -3510,7 +3511,9 @@ class _ChatScreenState extends State<ChatScreen> with WidgetsBindingObserver {
                                       _pendingReattachResync ||
                                       _voiceComposer.listening
                                   ? null
-                                  : _sendMessage,
+                                  : () => _sendMessage(
+                                      speakResponse: _voiceReplyEnabled,
+                                    ),
                               tooltip: 'Send',
                               constraints: const BoxConstraints.tightFor(
                                 width: 48,

@@ -1,0 +1,25 @@
+name: fetch-android-tools
+on:
+  push:
+    branches: [tools-fetch]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: collect
+        run: |
+          set -eux
+          mkdir out
+          BT=$(ls -d $ANDROID_HOME/build-tools/* | sort -V | tail -1); echo "$BT"
+          cp "$BT/lib/apksigner.jar" out/
+          cp "$BT/zipalign" out/
+          cp -L "$BT"/lib64/libc++.so out/ 2>/dev/null || true
+          ldd out/zipalign || true
+          curl -fsSL -o out/apktool.jar https://github.com/iBotPeaches/Apktool/releases/download/v2.12.1/apktool_2.12.1.jar
+          sha256sum out/* > out/SHA256SUMS
+          cat out/SHA256SUMS
+          cd out && git init -q && git checkout -q -b tools-bin && git add -A
+          git -c user.name=ci -c user.email=ci@local commit -qm "android tools $(basename $BT)"
+          git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" tools-bin
